@@ -1,0 +1,15 @@
+# AI & LLM Integrations
+google-genai
+openai
+
+# RAG & Vector Store
+chromadb
+langchain-text-splitters
+pypdf
+
+# Model Context Protocol (MCP)
+mcp
+
+# Utilities
+python-dotenv
+pydantic
