@@ -1,96 +1,52 @@
-import asyncio
 import os
-import mcp.types as types
-from mcp.server.models import InitializationOptions
-from mcp.server import NotificationOptions, Server
-from mcp.server.stdio import stdio_server
+try:
+    from fastmcp import FastMCP
+except ImportError:
+    from mcp.server.fastmcp import FastMCP
 
-# 1. Initialize core MCP Server instance
-server = Server("Enterprise-Workflow-Server")
-
-
-# 2. Register available tools
-@server.list_tools()
-async def handle_list_tools() -> list[types.Tool]:
-    """Expose available tools and their JSON schemas to the LLM."""
-    return [
-        types.Tool(
-            name="get_system_status",
-            description="Check operational status of a company service or database.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "service_name": {
-                        "type": "string",
-                        "description": "Name of the service (e.g. 'auth-db', 'payment-gateway')",
-                    }
-                },
-                "required": ["service_name"],
-            },
-        ),
-        types.Tool(
-            name="create_incident_ticket",
-            description="Create a new incident ticket for outages or bugs.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "title": {"type": "string", "description": "Brief summary of the issue"},
-                    "severity": {"type": "string", "description": "Priority level ('P1', 'P2', 'P3')"},
-                    "description": {"type": "string", "description": "Detailed error log or issue summary"},
-                },
-                "required": ["title", "severity", "description"],
-            },
-        ),
-    ]
+# Initialize the MCP Server (v2.0+)
+mcp = FastMCP("Enterprise-Workflow-Server")
 
 
-# 3. Handle tool execution requests from the LLM
-@server.call_tool()
-async def handle_call_tool(
-    name: str, arguments: dict | None
-) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
-    """Execute the requested tool and return output text."""
-    if not arguments:
-        arguments = {}
+# Tool 1: Check System Operational Status
+@mcp.tool()
+def get_system_status(service_name: str) -> str:
+    """Check the operational status of a company service or database.
 
-    if name == "get_system_status":
-        service_name = arguments.get("service_name", "").lower().strip()
-        status_db = {
-            "auth-db": "Operational | Latency: 12ms",
-            "payment-gateway": "Degraded | Error Rate: 4.5%",
-            "api-router": "Operational | Latency: 5ms",
-        }
-        result = status_db.get(
-            service_name, f"Service '{service_name}' not found in registry."
-        )
-        return [types.TextContent(type="text", text=result)]
-
-    elif name == "create_incident_ticket":
-        title = arguments.get("title", "No Title")
-        severity = arguments.get("severity", "P3")
-        ticket_id = f"INC-{os.urandom(2).hex().upper()}"
-        result = f"Success! Created Ticket:\n- Ticket ID: {ticket_id}\n- Title: {title}\n- Severity: {severity}"
-        return [types.TextContent(type="text", text=result)]
-
-    else:
-        raise ValueError(f"Unknown tool: {name}")
+    Args:
+        service_name: Name of the service (e.g. 'auth-db', 'payment-gateway', 'api-router')
+    """
+    status_db = {
+        "auth-db": "Operational | Latency: 12ms",
+        "payment-gateway": "Degraded | Error Rate: 4.5%",
+        "api-router": "Operational | Latency: 5ms",
+    }
+    key = service_name.lower().strip()
+    return status_db.get(
+        key, f"Service '{service_name}' not found in monitoring registry."
+    )
 
 
-# 4. Run the server over standard input/output (stdio)
-async def main():
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(
-            read_stream,
-            write_stream,
-            InitializationOptions(
-                server_name="Enterprise-Workflow-Server",
-                server_version="0.1.0",
-                capabilities=server.get_capabilities(
-                    notification_options=NotificationOptions(),
-                    experimental_capabilities={},
-                ),
-            ),
-        )
+# Tool 2: Create an Incident Ticket
+@mcp.tool()
+def create_incident_ticket(title: str, severity: str, description: str) -> str:
+    """Create a new incident ticket for system outages or bugs.
+
+    Args:
+        title: Brief summary of the issue
+        severity: Priority level ('P1', 'P2', 'P3')
+        description: Detailed explanation of what failed
+    """
+    ticket_id = f"INC-{os.urandom(2).hex().upper()}"
+    return (
+        f"Success! Incident Ticket Created:\n"
+        f"- Ticket ID: {ticket_id}\n"
+        f"- Title: {title}\n"
+        f"- Severity: {severity}\n"
+        f"- Status: Open"
+    )
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # In MCP v2.0+, mcp.run() runs over stdio by default
+    mcp.run()

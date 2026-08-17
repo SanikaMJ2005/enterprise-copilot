@@ -9,6 +9,7 @@ pypdf
 
 # Model Context Protocol (MCP)
 mcp
+fastmcp
 
 # Utilities
 python-dotenv

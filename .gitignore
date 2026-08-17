@@ -9,3 +9,4 @@ __pycache__/
 # Local Databases & Vector Stores
 chroma_db/
 *.db
+.env
