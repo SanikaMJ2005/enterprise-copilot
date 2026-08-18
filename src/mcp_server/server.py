@@ -1,14 +1,41 @@
 import os
-try:
-    from fastmcp import FastMCP
-except ImportError:
-    from mcp.server.fastmcp import FastMCP
+import chromadb
+from chromadb.utils import embedding_functions
+from mcp.server.fastmcp import FastMCP
 
 # Initialize the MCP Server (v2.0+)
 mcp = FastMCP("Enterprise-Workflow-Server")
 
 
-# Tool 1: Check System Operational Status
+# Tool 1: RAG Document Search
+@mcp.tool()
+def search_company_policies(query: str) -> str:
+    """Search internal company policies, IT standards, and SLAs using RAG vector search.
+
+    Args:
+        query: Natural language search query about company policies or guidelines.
+    """
+    db_path = os.path.join("data", "chroma_db")
+    if not os.path.exists(db_path):
+        return "Error: Policy database not indexed yet."
+
+    chroma_client = chromadb.PersistentClient(path=db_path)
+    embedding_fn = embedding_functions.DefaultEmbeddingFunction()
+
+    try:
+        collection = chroma_client.get_collection(
+            name="company_policies", embedding_function=embedding_fn
+        )
+        results = collection.query(query_texts=[query], n_results=2)
+        documents = results.get("documents", [[]])[0]
+        if not documents:
+            return "No relevant policies found."
+        return "\n\n---\n\n".join(documents)
+    except Exception as e:
+        return f"Error querying policy database: {str(e)}"
+
+
+# Tool 2: Check System Operational Status
 @mcp.tool()
 def get_system_status(service_name: str) -> str:
     """Check the operational status of a company service or database.
@@ -27,7 +54,7 @@ def get_system_status(service_name: str) -> str:
     )
 
 
-# Tool 2: Create an Incident Ticket
+# Tool 3: Create an Incident Ticket
 @mcp.tool()
 def create_incident_ticket(title: str, severity: str, description: str) -> str:
     """Create a new incident ticket for system outages or bugs.
@@ -48,5 +75,4 @@ def create_incident_ticket(title: str, severity: str, description: str) -> str:
 
 
 if __name__ == "__main__":
-    # In MCP v2.0+, mcp.run() runs over stdio by default
     mcp.run()

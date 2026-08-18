@@ -1,16 +1,14 @@
+# Web Framework & Environment
+streamlit
+python-dotenv
+
 # AI & LLM Integrations
 google-genai
 openai
 
-# RAG & Vector Store
-chromadb
-langchain-text-splitters
-pypdf
-
-# Model Context Protocol (MCP)
-mcp
+# FastMCP & Agent Protocol
 fastmcp
 
-# Utilities
-python-dotenv
-pydantic
+# Vector DB & RAG
+chromadb
+langchain-text-splitters

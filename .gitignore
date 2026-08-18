@@ -1,5 +1,6 @@
 # Python environment & cache
 venv/
+.venv/
 __pycache__/
 *.pyc
 
@@ -7,6 +8,6 @@ __pycache__/
 .env
 
 # Local Databases & Vector Stores
-chroma_db/
+data/chroma_db/
 *.db
-.env
+*.sqlite3

@@ -31,39 +31,36 @@ def clean_schema(schema):
         if isinstance(v, dict):
             cleaned[k] = clean_schema(v)
         elif isinstance(v, list):
-            cleaned[k] = [clean_schema(item) if isinstance(item, dict) else item for item in v]
+            cleaned[k] = [
+                clean_schema(item) if isinstance(item, dict) else item
+                for item in v
+            ]
         else:
             cleaned[k] = v
     return cleaned
 
 
 async def run_copilot():
-    # 1. Define how to launch our local MCP server as a subprocess
     server_params = StdioServerParameters(
-        command=sys.executable,  # Uses current active Python inside venv
+        command=sys.executable,
         args=["src/mcp_server/server.py"],
         env=os.environ.copy(),
     )
 
     print("🔌 Connecting to local MCP Server...")
 
-    # 2. Establish connection to MCP Server over stdio
     async with stdio_client(server_params) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
-            print("✅ Connected! Fetching available tools from MCP Server...")
+            print("✅ Connected to MCP Server!")
 
-            # 3. List tools registered on the server
+            # Fetch available tools
             mcp_tools = await session.list_tools()
-            print(f"🛠️  Found {len(mcp_tools.tools)} MCP Tools:")
+            print(f"🛠️  Loaded {len(mcp_tools.tools)} MCP Tools:")
             for tool in mcp_tools.tools:
-                print(f"   - {tool.name}: {tool.description}")
+                print(f"   - {tool.name}")
 
-            # 4. Prompt the user for input
-            user_prompt = "Check the status of payment-gateway. If it is degraded, open a P1 ticket describing the issue."
-            print(f"\n💬 User Query: '{user_prompt}'\n")
-
-            # 5. Convert MCP tools to Gemini function declarations
+            # Format tools for Gemini API
             gemini_tools = []
             for tool in mcp_tools.tools:
                 gemini_tools.append(
@@ -78,44 +75,84 @@ async def run_copilot():
                     )
                 )
 
-            # 6. Send request to Gemini LLM with tools enabled (with multi-turn tool calling)
-            contents = [user_prompt]
             config = types.GenerateContentConfig(
                 tools=gemini_tools,
                 temperature=0.2,
             )
 
+            # Conversation history buffer
+            chat_history = []
+
+            print("\n" + "=" * 60)
+            print("🚀 Enterprise Copilot CLI Ready! (Type 'exit' or 'quit' to stop)")
+            print("=" * 60 + "\n")
+
             while True:
-                response = client.models.generate_content(
-                    model="gemini-2.5-flash",
-                    contents=contents,
-                    config=config,
+                try:
+                    user_input = input("👤 You: ").strip()
+                except (EOFError, KeyboardInterrupt):
+                    print("\nExiting...")
+                    break
+
+                if not user_input:
+                    continue
+
+                if user_input.lower() in ("exit", "quit"):
+                    print("👋 Goodbye!")
+                    break
+
+                # Add user query to conversation history
+                chat_history.append(
+                    types.Content(
+                        role="user", parts=[types.Part.from_text(text=user_input)]
+                    )
                 )
 
-                if response.function_calls:
-                    contents.append(response.candidates[0].content)
-                    function_responses = []
+                # Tool-execution loop for the current turn
+                while True:
+                    response = client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=chat_history,
+                        config=config,
+                    )
 
-                    for call in response.function_calls:
-                        print(f"🤖 AI Decided to call tool: {call.name}")
-                        print(f"   Arguments: {call.args}")
+                    if response.function_calls:
+                        # Append assistant's function call decision to history
+                        chat_history.append(response.candidates[0].content)
+                        function_responses = []
 
-                        # Execute the tool call via MCP Session
-                        result = await session.call_tool(call.name, call.args)
-                        result_text = result.content[0].text if result.content else ""
-                        print(f"⚡ MCP Execution Result:\n{result_text}\n")
+                        for call in response.function_calls:
+                            print(f"\n🤖 [Calling Tool]: {call.name}")
+                            print(f"   Args: {call.args}")
 
-                        function_responses.append(
-                            types.Part.from_function_response(
-                                name=call.name,
-                                response={"result": result_text},
+                            # Execute tool call via MCP
+                            result = await session.call_tool(call.name, call.args)
+                            result_text = (
+                                result.content[0].text if result.content else ""
+                            )
+                            print(f"⚡ [Result]:\n{result_text}\n")
+
+                            function_responses.append(
+                                types.Part.from_function_response(
+                                    name=call.name,
+                                    response={"result": result_text},
+                                )
+                            )
+
+                        # Provide function results back to Gemini
+                        chat_history.append(
+                            types.Content(role="user", parts=function_responses)
+                        )
+                    else:
+                        print(f"\n🤖 Copilot:\n{response.text}\n")
+                        # Store final assistant text response in context history
+                        chat_history.append(
+                            types.Content(
+                                role="model",
+                                parts=[types.Part.from_text(text=response.text)],
                             )
                         )
-
-                    contents.append(types.Content(role="user", parts=function_responses))
-                else:
-                    print(f"🤖 Final AI Response:\n{response.text}")
-                    break
+                        break
 
 
 if __name__ == "__main__":
